@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Number Writing Practice</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Nanum+Square:wght@700&display=swap');
+    body {
+      font-family: 'Nanum Square', sans-serif;
+      text-align: center;
+      padding: 24px;
+      background: #fff;
+    }
+    h1 {
+      margin-bottom: 20px;
+    }
+    #topBar {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+    select, button {
+      font-size: 18px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid #ccc;
+      font-family: inherit;
+    }
+    #message {
+      font-size: 22px;
+      min-height: 34px;
+      margin: 14px 0;
+    }
+    #practiceArea {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    #boardWrap {
+      position: relative;
+      width: 320px;
+      height: 320px;
+      border: 2px solid #ddd;
+      border-radius: 16px;
+      background: #fff;
+      overflow: hidden;
+      touch-action: none;
+    }
+    #guideCanvas,
+    #drawCanvas {
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+    #meaningBox {
+      width: 210px;
+      min-height: 320px;
+      border: 2px solid #ddd;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: #fafafa;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    #bigNumber {
+      font-size: 84px;
+      line-height: 1;
+      margin-bottom: 18px;
+      font-family: 'Nanum Square', sans-serif;
+      font-weight: 700;
+      min-height: 84px;
+    }
+    #dotContainer {
+      display: grid;
+      grid-template-columns: repeat(5, 14px);
+      gap: 6px;
+      justify-content: center;
+      align-content: center;
+      min-height: 34px;
+      margin-bottom: 10px;
+    }
+    #reading {
+      font-size: 28px;
+      font-weight: bold;
+    }
+    #controls {
+      margin-top: 16px;
+    }
+    #hintBtn {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>숫자 쓰기 연습</h1>
+
+  <div id="topBar">
+    <select id="modeSelect">
+      <option value="practice">연습 모드</option>
+      <option value="test">테스트 모드</option>
+    </select>
+
+    <select id="numberSelect">
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+      <option value="5">5</option>
+      <option value="6">6</option>
+      <option value="7">7</option>
+      <option value="8">8</option>
+      <option value="9">9</option>
+      <option value="10">10</option>
+    </select>
+
+    <button id="loadBtn">문제 선택</button>
+  </div>
+
+  <div id="message">시작 버튼을 누르세요</div>
+
+  <div id="practiceArea">
+    <div id="boardWrap">
+      <canvas id="guideCanvas" width="320" height="320"></canvas>
+      <canvas id="drawCanvas" width="320" height="320"></canvas>
+    </div>
+
+    <div id="meaningBox">
+      <div id="bigNumber">1</div>
+      <div id="dotContainer"></div>
+      <div id="reading">일(하나)</div>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button id="hintBtn">힌트 보기</button>
+    <button id="startBtn">연습 시작</button>
+    <button id="clearBtn">다시 하기</button>
+  </div>
+
+  <script>
+    const numberInfo = {
+      '1': '일(하나)',
+      '2': '이(둘)',
+      '3': '삼(셋)',
+      '4': '사(넷)',
+      '5': '오(다섯)',
+      '6': '육(여섯)',
+      '7': '칠(일곱)',
+      '8': '팔(여덟)',
+      '9': '구(아홉)',
+      '10': '십(열)'
+    };
+
+    const message = document.getElementById('message');
+    const modeSelect = document.getElementById('modeSelect');
+    const numberSelect = document.getElementById('numberSelect');
+    const loadBtn = document.getElementById('loadBtn');
+    const startBtn = document.getElementById('startBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const hintBtn = document.getElementById('hintBtn');
+    const bigNumber = document.getElementById('bigNumber');
+    const reading = document.getElementById('reading');
+    const dotContainer = document.getElementById('dotContainer');
+
+    const guideCanvas = document.getElementById('guideCanvas');
+    const drawCanvas = document.getElementById('drawCanvas');
+    const gctx = guideCanvas.getContext('2d');
+    const dctx = drawCanvas.getContext('2d');
+
+    let isDrawing = false;
+    let hasStarted = false;
+    let strokeLength = 0;
+    let hintTimeoutId = null;
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const audioContext = AudioCtx ? new AudioCtx() : null;
+
+    function setMessage(text) {
+      message.textContent = text;
+    }
+
+    function getDisplayNumber(value) {
+      return value;
+    }
+
+    function resetGuideCanvas() {
+      gctx.clearRect(0, 0, guideCanvas.width, guideCanvas.height);
+    }
+
+    function drawSimpleOne(ctx, x, top, bottom, color, alpha, width) {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x, top);
+      ctx.lineTo(x, bottom);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function drawNumberGuide(value, color = '#bdbdbd', alpha = 1) {
+      if (value === '1') {
+        drawSimpleOne(gctx, 160, 80, 220, color, alpha, 18);
+        return;
+      }
+
+      if (value === '9') {
+        gctx.save();
+        // 불투명 회색으로 표시
+        gctx.globalAlpha = 1;
+        const gray = '#bdbdbd';
+
+        // 1) 막대 먼저 그림
+        gctx.strokeStyle = gray;
+        gctx.lineWidth = 16;
+        gctx.lineCap = 'round';
+        gctx.beginPath();
+        gctx.moveTo(185, 120);
+        gctx.lineTo(185, 234);
+        gctx.stroke();
+
+        // 2) 겹치는 부분 가리기: 배경색으로 원 채우기(조금 더 크게)
+        gctx.beginPath();
+        gctx.fillStyle = '#fff';
+        gctx.arc(145, 110, 42, 0, Math.PI * 2);
+        gctx.fill();
+
+        // 3) 회색 동그라미 테두리 그리기
+        gctx.beginPath();
+        gctx.strokeStyle = gray;
+        gctx.lineWidth = 16;
+        gctx.arc(145, 110, 40, 0, Math.PI * 2);
+        gctx.stroke();
+
+        gctx.restore();
+        return;
+      }
+
+      if (value === '10') {
+        drawSimpleOne(gctx, 120, 90, 216, color, alpha, 16);
+        gctx.save();
+        gctx.globalAlpha = alpha;
+        gctx.fillStyle = color;
+        gctx.textAlign = 'center';
+        gctx.textBaseline = 'middle';
+        gctx.font = '180px Arial';
+        gctx.fillText('0', 200, 170);
+        gctx.restore();
+        return;
+      }
+
+      gctx.save();
+      gctx.globalAlpha = alpha;
+      gctx.fillStyle = color;
+      gctx.textAlign = 'center';
+      gctx.textBaseline = 'middle';
+      gctx.font = '220px Arial';
+      gctx.fillText(getDisplayNumber(value), 160, 170);
+      gctx.restore();
+    }
+
+    function drawGuide() {
+      const value = numberSelect.value;
+      const isTestMode = modeSelect.value === 'test';
+      resetGuideCanvas();
+      if (isTestMode) return;
+      drawNumberGuide(value, '#bdbdbd', 1);
+    }
+
+    function showTemporaryHint() {
+      const isTestMode = modeSelect.value === 'test';
+      if (!isTestMode) return;
+
+      const value = numberSelect.value;
+      resetGuideCanvas();
+      drawNumberGuide(value, '#bdbdbd', 1);
+
+      if (hintTimeoutId) {
+        clearTimeout(hintTimeoutId);
+      }
+
+      hintTimeoutId = window.setTimeout(() => {
+        resetGuideCanvas();
+        hintTimeoutId = null;
+      }, 1000);
+    }
+
+    function renderDots(value, isTestMode) {
+      dotContainer.innerHTML = '';
+      if (!isTestMode) return;
+
+      const count = parseInt(value, 10);
+      for (let i = 0; i < count; i++) {
+        const dot = document.createElement('div');
+        dot.style.width = '14px';
+        dot.style.height = '14px';
+        dot.style.borderRadius = '50%';
+        dot.style.background = '#000';
+        dotContainer.appendChild(dot);
+      }
+    }
+
+    function updateProblem() {
+      const value = numberSelect.value;
+      const isTestMode = modeSelect.value === 'test';
+
+      if (hintTimeoutId) {
+        clearTimeout(hintTimeoutId);
+        hintTimeoutId = null;
+      }
+
+      bigNumber.textContent = isTestMode ? '' : getDisplayNumber(value);
+      reading.textContent = numberInfo[value] || '';
+      renderDots(value, isTestMode);
+      clearDrawing();
+      drawGuide();
+      hintBtn.style.display = isTestMode ? 'inline-block' : 'none';
+      setMessage(isTestMode ? '바둑돌을 세어서 숫자를 써보세요' : '시작 버튼을 누르세요');
+      hasStarted = false;
+      strokeLength = 0;
+      drawCanvas.style.pointerEvents = 'none';
+    }
+
+    function clearDrawing() {
+      dctx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+      dctx.lineCap = 'round';
+      dctx.lineJoin = 'round';
+      dctx.lineWidth = 10;
+      dctx.strokeStyle = '#111';
+    }
+
+    function ensureAudio() {
+      if (!audioContext) return false;
+      if (audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      return true;
+    }
+
+    function playStartSound() {
+      if (!ensureAudio()) return;
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(660, audioContext.currentTime);
+      gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.18);
+
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+
+      osc.start(audioContext.currentTime);
+      osc.stop(audioContext.currentTime + 0.18);
+    }
+
+    function playSuccessSound() {
+      if (!ensureAudio()) return;
+      const osc1 = audioContext.createOscillator();
+      const osc2 = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+
+      osc1.type = 'sine';
+      osc2.type = 'sine';
+      osc1.frequency.setValueAtTime(880, audioContext.currentTime);
+      osc2.frequency.setValueAtTime(1174, audioContext.currentTime + 0.08);
+      gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.18, audioContext.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.45);
+
+      osc1.connect(gain);
+      osc2.connect(gain);
+      gain.connect(audioContext.destination);
+
+      osc1.start(audioContext.currentTime);
+      osc2.start(audioContext.currentTime + 0.08);
+      osc1.stop(audioContext.currentTime + 0.32);
+      osc2.stop(audioContext.currentTime + 0.45);
+    }
+
+    function playFailSound() {
+      if (!ensureAudio()) return;
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(220, audioContext.currentTime);
+      gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.25);
+
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+
+      osc.start(audioContext.currentTime);
+      osc.stop(audioContext.currentTime + 0.25);
+    }
+
+    function getPos(event) {
+      const rect = drawCanvas.getBoundingClientRect();
+      const point = event.touches ? event.touches[0] : event;
+      return {
+        x: point.clientX - rect.left,
+        y: point.clientY - rect.top
+      };
+    }
+
+    function startDrawing(event) {
+      if (!hasStarted) {
+        setMessage('먼저 연습 시작 버튼을 눌러주세요');
+        return;
+      }
+      event.preventDefault();
+      const pos = getPos(event);
+      isDrawing = true;
+      dctx.beginPath();
+      dctx.moveTo(pos.x, pos.y);
+    }
+
+    function draw(event) {
+      if (!isDrawing) return;
+      event.preventDefault();
+      const pos = getPos(event);
+      dctx.lineTo(pos.x, pos.y);
+      dctx.stroke();
+      strokeLength++;
+    }
+
+    function stopDrawing() {
+      if (!isDrawing) return;
+      isDrawing = false;
+
+      if (!hasStarted) return;
+
+      const value = numberSelect.value;
+
+      // 숫자 1은 선 하나라서 기준을 낮춤
+      const threshold = value === '1' ? 5 : 20;
+
+      if (strokeLength > threshold) {
+        playSuccessSound();
+        setMessage('잘했어요!');
+      } else {
+        playFailSound();
+        setMessage('조금 더 크게 써볼까요?');
+      }
+
+      strokeLength = 0;
+    }
+
+    function startPractice() {
+      hasStarted = true;
+      drawCanvas.style.pointerEvents = 'auto';
+      setMessage(modeSelect.value === 'test' ? '바둑돌을 세어서 숫자를 써보세요' : '숫자를 따라 써보세요');
+      playStartSound();
+    }
+
+    drawCanvas.addEventListener('mousedown', startDrawing);
+    drawCanvas.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stopDrawing);
+
+    drawCanvas.addEventListener('touchstart', startDrawing, { passive: false });
+    drawCanvas.addEventListener('touchmove', draw, { passive: false });
+    window.addEventListener('touchend', stopDrawing);
+
+    loadBtn.addEventListener('click', updateProblem);
+    modeSelect.addEventListener('change', updateProblem);
+    startBtn.addEventListener('click', startPractice);
+    clearBtn.addEventListener('click', () => {
+      clearDrawing();
+      strokeLength = 0;
+      setMessage(modeSelect.value === 'test' ? '바둑돌을 세어서 숫자를 써보세요' : '시작 버튼을 누르세요');
+    });
+    hintBtn.addEventListener('click', showTemporaryHint);
+
+    function runSelfTests() {
+      console.assert(numberInfo['1'] === '일(하나)', '1 읽기 정보가 올바르지 않음');
+      console.assert(numberInfo['10'] === '십(열)', '10 읽기 정보가 올바르지 않음');
+      console.assert(getDisplayNumber('1') === '1', '숫자 표시 값이 잘못됨');
+      console.assert(dotContainer !== null, 'dotContainer를 찾을 수 없음');
+      console.assert(typeof showTemporaryHint === 'function', 'showTemporaryHint 함수가 정의되지 않음');
+      console.assert(typeof drawNumberGuide === 'function', 'drawNumberGuide 함수가 정의되지 않음');
+      console.assert(typeof renderDots === 'function', 'renderDots 함수가 정의되지 않음');
+    }
+
+    runSelfTests();
+    updateProblem();
+  </script>
+</body>
+</html>
